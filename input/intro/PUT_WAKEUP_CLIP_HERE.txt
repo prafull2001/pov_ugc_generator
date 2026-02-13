@@ -1,0 +1,14 @@
+PUT YOUR WAKE-UP VIDEO HERE
+============================
+
+This folder should contain exactly ONE video file.
+
+This is the clip where:
+- Your alarm goes off
+- You snooze it
+- You flip the phone
+- The camera goes down (falling back asleep POV)
+
+Supported formats: .mp4, .mov, .avi, .mkv, .m4v
+
+Delete this text file after adding your video.

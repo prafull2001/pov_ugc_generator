@@ -1,0 +1,38 @@
+# Output videos (generated content)
+output/*.mp4
+output/*.mov
+output/*.avi
+output/*.mkv
+output/*.m4v
+
+# Temporary files
+temp/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.env
+.venv
+env/
+venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Firebase
+firebase-debug.log
+.firebase/
+
+# Claude
+.claude/

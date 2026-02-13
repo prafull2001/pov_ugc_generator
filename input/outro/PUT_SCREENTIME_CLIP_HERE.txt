@@ -1,0 +1,13 @@
+PUT YOUR SCREEN TIME CLIP HERE
+===============================
+
+This folder should contain exactly ONE video file.
+
+This is the clip where:
+- Screen time blocks the app
+- You go through the flow of requesting more time
+- You get up and start your day
+
+Supported formats: .mp4, .mov, .avi, .mkv, .m4v
+
+Delete this text file after adding your video.

@@ -1,0 +1,20 @@
+PUT YOUR MEME CLIPS HERE
+========================
+
+This folder can contain MULTIPLE video files.
+
+These are the clips where you're scrolling through funny memes.
+
+Each meme clip will generate one complete video!
+Example: 10 meme clips = 10 final videos
+
+TIP: Name your files descriptively!
+  - funny_cat.mp4
+  - sports_fail.mp4
+  - cooking_meme.mp4
+
+The file name will appear in the output video name.
+
+Supported formats: .mp4, .mov, .avi, .mkv, .m4v
+
+Delete this text file after adding your videos.
