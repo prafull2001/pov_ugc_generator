@@ -274,12 +274,12 @@ pov_ugc_generator/
 │   └── endcard/
 │       └── endcard.mov
 │
-├── output/
-│   ├── tiktok_1/
-│   ├── tiktok_2/
-│   ├── instagram_1/
-│   ├── instagram_2/
-│   └── backup/
+├── batch_output/
+│   ├── acc1/
+│   ├── acc2/
+│   ├── acc3/
+│   ├── acc4/
+│   └── acc5/
 │
 ├── generate_videos.py          # Original single-output script
 ├── generate_variations.py      # NEW: Multi-variation script

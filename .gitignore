@@ -5,6 +5,13 @@ output/*.avi
 output/*.mkv
 output/*.m4v
 
+# Batch output variations
+batch_output/**/*.mp4
+batch_output/**/*.mov
+batch_output/**/*.avi
+batch_output/**/*.mkv
+batch_output/**/*.m4v
+
 # Temporary files
 temp/
 
