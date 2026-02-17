@@ -3,7 +3,7 @@
 POV UGC Variation Generator
 ---------------------------
 Generates 5 unique video variations per meme for multi-account posting.
-Each variation has different audio, visual treatment, and caption.
+Each variation uses random intro video + random audio combinations.
 
 Usage: python generate_variations.py
 """
@@ -13,7 +13,6 @@ import subprocess
 import sys
 import random
 from pathlib import Path
-from itertools import cycle
 
 # Caption options - two main styles that perform best
 CAPTIONS = [
@@ -22,15 +21,6 @@ CAPTIONS = [
     "POV you stayed up way too late\non a school night",
     "POV you stayed up studying\nall night again",
     "POV you stay up too late\non a school night...",
-]
-
-# Visual presets for uniqueness (brightness, saturation, speed, crop_x, crop_y, pitch_cents)
-VISUAL_PRESETS = [
-    {"name": "A", "brightness": 0.00, "saturation": 1.00, "speed": 1.00, "crop_x": 0, "crop_y": 0, "pitch": 0},
-    {"name": "B", "brightness": 0.03, "saturation": 1.05, "speed": 1.01, "crop_x": 8, "crop_y": 0, "pitch": 15},
-    {"name": "C", "brightness": -0.02, "saturation": 1.03, "speed": 0.99, "crop_x": -8, "crop_y": 0, "pitch": -10},
-    {"name": "D", "brightness": 0.02, "saturation": 0.97, "speed": 1.02, "crop_x": 0, "crop_y": 8, "pitch": 20},
-    {"name": "E", "brightness": -0.03, "saturation": 1.08, "speed": 0.98, "crop_x": 0, "crop_y": -8, "pitch": -15},
 ]
 
 # Number of accounts/variations per meme
@@ -97,7 +87,7 @@ def normalize_video(input_path, output_path, width=1080, height=1920, fps=30, ke
     if keep_audio:
         cmd.extend(["-c:a", "aac", "-b:a", "192k"])
     else:
-        cmd.append("-an")  # Remove audio
+        cmd.append("-an")
     cmd.append(str(output_path))
     subprocess.run(cmd, capture_output=True, check=True)
 
@@ -124,23 +114,19 @@ def concatenate_videos(video_paths, output_path, temp_dir):
 def concatenate_audio(audio_paths, output_path, durations=None):
     """Concatenate audio files, trimming to match video durations if provided."""
     if len(audio_paths) == 1:
-        # Just copy single audio
         subprocess.run(["cp", str(audio_paths[0]), str(output_path)], check=True)
         return
 
-    # Build filter for concatenating audio
     inputs = []
     filter_parts = []
 
     for i, audio_path in enumerate(audio_paths):
         inputs.extend(["-i", str(audio_path)])
         if durations and i < len(durations):
-            # Trim audio to match video duration
             filter_parts.append(f"[{i}:a]atrim=0:{durations[i]},asetpts=PTS-STARTPTS[a{i}]")
         else:
             filter_parts.append(f"[{i}:a]asetpts=PTS-STARTPTS[a{i}]")
 
-    # Concatenate all audio streams
     concat_inputs = "".join([f"[a{i}]" for i in range(len(audio_paths))])
     filter_parts.append(f"{concat_inputs}concat=n={len(audio_paths)}:v=0:a=1[out]")
 
@@ -153,67 +139,6 @@ def concatenate_audio(audio_paths, output_path, durations=None):
         "-map", "[out]",
         "-c:a", "aac",
         "-b:a", "192k",
-        str(output_path)
-    ]
-    subprocess.run(cmd, capture_output=True, check=True)
-
-
-def apply_visual_preset(input_path, output_path, preset, width=1080, height=1920):
-    """Apply visual modifications for uniqueness."""
-    brightness = preset["brightness"]
-    saturation = preset["saturation"]
-    speed = preset["speed"]
-    crop_x = preset["crop_x"]
-    crop_y = preset["crop_y"]
-
-    # Build video filter
-    filters = []
-
-    # Speed adjustment (affects both video and we'll handle audio separately)
-    if speed != 1.0:
-        filters.append(f"setpts={1/speed}*PTS")
-
-    # Crop offset (crop slightly then scale back)
-    if crop_x != 0 or crop_y != 0:
-        crop_w = width - abs(crop_x) * 2
-        crop_h = height - abs(crop_y) * 2
-        offset_x = max(0, crop_x)
-        offset_y = max(0, crop_y)
-        filters.append(f"crop={crop_w}:{crop_h}:{offset_x}:{offset_y}")
-        filters.append(f"scale={width}:{height}")
-
-    # Brightness and saturation
-    if brightness != 0 or saturation != 1.0:
-        filters.append(f"eq=brightness={brightness}:saturation={saturation}")
-
-    vf = ",".join(filters) if filters else "null"
-
-    # Audio filter for speed and pitch
-    af_parts = []
-    if speed != 1.0:
-        af_parts.append(f"atempo={speed}")
-
-    pitch = preset["pitch"]
-    if pitch != 0:
-        # Pitch shift in cents (100 cents = 1 semitone)
-        # asetrate changes pitch, aresample brings back to normal rate
-        rate_mult = 2 ** (pitch / 1200)
-        af_parts.append(f"asetrate=44100*{rate_mult},aresample=44100")
-
-    af = ",".join(af_parts) if af_parts else "anull"
-
-    cmd = [
-        "ffmpeg", "-y",
-        "-i", str(input_path),
-        "-vf", vf,
-        "-af", af,
-        "-c:v", "libx264",
-        "-preset", "fast",
-        "-crf", "18",
-        "-pix_fmt", "yuv420p",
-        "-c:a", "aac",
-        "-b:a", "192k",
-        "-movflags", "+faststart",
         str(output_path)
     ]
     subprocess.run(cmd, capture_output=True, check=True)
@@ -296,7 +221,6 @@ def mix_meme_with_reaction(meme_video_path, reaction_audio_path, output_path, me
     """Mix meme's original audio (at reduced volume) with reaction audio overlay."""
     meme_duration = get_video_duration(meme_video_path)
 
-    # Mix meme audio at 75% with reaction audio on top, trimmed to meme length
     cmd = [
         "ffmpeg", "-y",
         "-i", str(meme_video_path),
@@ -314,7 +238,7 @@ def mix_meme_with_reaction(meme_video_path, reaction_audio_path, output_path, me
 
 
 def append_endcard(main_video_path, endcard_path, output_path, temp_dir):
-    """Append endcard to the main video, preserving endcard's audio (or silence)."""
+    """Append endcard to the main video."""
     list_file = temp_dir / "final_concat.txt"
     with open(list_file, "w") as f:
         f.write(f"file '{str(main_video_path).replace(chr(39), chr(39)+chr(92)+chr(39)+chr(39))}'\n")
@@ -344,7 +268,6 @@ def main():
     print("=" * 55)
     print()
 
-    # Check FFmpeg
     if not check_ffmpeg():
         print("ERROR: FFmpeg is not installed!")
         sys.exit(1)
@@ -372,23 +295,22 @@ def main():
     outro_audios = find_audio_files(audio_dir, "outro")
 
     print(f"[OK] Found {len(intro_audios)} intro audio variants")
-    print(f"[OK] Found {len(middle_audios)} middle audio variants")
+    print(f"[OK] Found {len(middle_audios)} middle/reaction audio variants")
     print(f"[OK] Found {len(outro_audios)} outro audio variants")
 
     if not intro_audios or not middle_audios or not outro_audios:
         print("ERROR: Missing audio files in audio_files/ folder")
-        print("  Need: Intro audio X.m4a, Middle audio X.m4a, Outro audio X.m4a")
         sys.exit(1)
 
     # Find video files
     video_extensions = {".mp4", ".mov", ".avi", ".mkv", ".m4v"}
 
+    # Multiple intro videos supported
     intro_videos = find_files(intro_dir, video_extensions)
     if not intro_videos:
-        print(f"ERROR: No intro video in {intro_dir}")
+        print(f"ERROR: No intro videos in {intro_dir}")
         sys.exit(1)
-    intro_video = intro_videos[0]
-    print(f"[OK] Intro video: {intro_video.name}")
+    print(f"[OK] Found {len(intro_videos)} intro video(s)")
 
     outro_videos = sorted(find_files(outro_dir, video_extensions))
     if not outro_videos:
@@ -408,29 +330,31 @@ def main():
         print(f"[OK] Endcard: {endcard_video.name}")
 
     print()
-    print("Normalizing base videos...")
+    print("Normalizing videos...")
 
-    # Normalize intro (silent)
-    normalized_intro = temp_dir / "intro_normalized.mp4"
-    print("  Processing intro...")
-    normalize_video(intro_video, normalized_intro)
-    intro_duration = get_video_duration(normalized_intro)
+    # Normalize all intro videos (silent - we'll add audio)
+    normalized_intros = []
+    intro_durations = []
+    for i, intro in enumerate(intro_videos):
+        print(f"  Intro {i+1}: {intro.name}")
+        norm_path = temp_dir / f"intro_{i}_norm.mp4"
+        normalize_video(intro, norm_path)
+        normalized_intros.append(norm_path)
+        intro_durations.append(get_video_duration(norm_path))
 
     # Normalize and concatenate outro clips (silent)
     print("  Processing outro clips...")
     outro_normalized = []
-    outro_durations = []
     for i, outro_clip in enumerate(outro_videos):
         norm_path = temp_dir / f"outro_{i}_norm.mp4"
         normalize_video(outro_clip, norm_path)
         outro_normalized.append(norm_path)
-        outro_durations.append(get_video_duration(norm_path))
 
     normalized_outro = temp_dir / "outro_normalized.mp4"
     concatenate_videos(outro_normalized, normalized_outro, temp_dir)
     outro_duration = get_video_duration(normalized_outro)
 
-    # Normalize endcard (keep any audio it has)
+    # Normalize endcard (keep audio)
     normalized_endcard = None
     if endcard_video:
         print("  Processing endcard...")
@@ -452,9 +376,6 @@ def main():
     print(f"Generating {NUM_ACCOUNTS} variations per meme...")
     print()
 
-    # Track which combinations we've used to avoid repeats
-    used_combinations = set()
-
     # Process each meme
     for meme_idx, (meme_path, meme_dur) in enumerate(zip(normalized_memes, meme_durations)):
         meme_name = meme_videos[meme_idx].stem
@@ -465,20 +386,17 @@ def main():
             acc_num = acc_idx + 1
             output_path = output_base / f"acc{acc_num}" / f"{meme_name}_v{acc_num}.mp4"
 
-            # Select unique combination
-            while True:
-                intro_audio_idx = random.randint(0, len(intro_audios) - 1)
-                middle_audio_idx = random.randint(0, len(middle_audios) - 1)
-                outro_audio_idx = random.randint(0, len(outro_audios) - 1)
-                combo = (intro_audio_idx, middle_audio_idx, outro_audio_idx)
-                if combo not in used_combinations or len(used_combinations) >= len(intro_audios) * len(middle_audios) * len(outro_audios):
-                    used_combinations.add(combo)
-                    break
+            # Random selections
+            intro_idx = random.randint(0, len(normalized_intros) - 1)
+            intro_audio_idx = random.randint(0, len(intro_audios) - 1)
+            middle_audio_idx = random.randint(0, len(middle_audios) - 1)
+            outro_audio_idx = random.randint(0, len(outro_audios) - 1)
+            caption = random.choice(CAPTIONS)
 
-            preset = VISUAL_PRESETS[acc_idx]
-            caption = CAPTIONS[acc_idx % len(CAPTIONS)]
+            selected_intro = normalized_intros[intro_idx]
+            selected_intro_dur = intro_durations[intro_idx]
 
-            print(f"  acc{acc_num}: audio({intro_audio_idx+1},{middle_audio_idx+1},{outro_audio_idx+1}) preset={preset['name']}")
+            print(f"  acc{acc_num}: intro={intro_idx+1}, audio=({intro_audio_idx+1},{middle_audio_idx+1},{outro_audio_idx+1})")
 
             # Step 1: Mix meme audio with reaction audio (meme at 75% volume)
             meme_with_reaction = temp_dir / f"meme_mixed_{meme_idx}_{acc_idx}.mp4"
@@ -489,24 +407,12 @@ def main():
                 meme_volume=0.75
             )
 
-            # Step 2: Concatenate video (intro + meme_with_audio + outro) - no endcard yet
-            video_parts = [normalized_intro, meme_with_reaction, normalized_outro]
+            # Step 2: Concatenate video (intro + meme + outro)
+            video_parts = [selected_intro, meme_with_reaction, normalized_outro]
             concat_video = temp_dir / f"concat_{meme_idx}_{acc_idx}.mp4"
             concatenate_videos(video_parts, concat_video, temp_dir)
 
-            # Step 3: Concatenate audio for intro and outro only
-            # (meme already has mixed audio)
-            audio_parts = [
-                intro_audios[intro_audio_idx],
-                outro_audios[outro_audio_idx]
-            ]
-            durations = [intro_duration, outro_duration]
-
-            concat_audio = temp_dir / f"audio_{meme_idx}_{acc_idx}.m4a"
-            concatenate_audio(audio_parts, concat_audio, durations)
-
-            # Step 4: Build final audio by combining intro_audio + meme_mixed_audio + outro_audio
-            # Extract meme's mixed audio first
+            # Step 3: Extract meme's mixed audio
             meme_audio_extracted = temp_dir / f"meme_audio_{meme_idx}_{acc_idx}.m4a"
             subprocess.run([
                 "ffmpeg", "-y", "-i", str(meme_with_reaction),
@@ -514,17 +420,17 @@ def main():
                 str(meme_audio_extracted)
             ], capture_output=True, check=True)
 
-            # Now concatenate: intro_audio + meme_audio + outro_audio
+            # Step 4: Concatenate audio: intro_audio + meme_audio + outro_audio
             full_audio_parts = [
                 intro_audios[intro_audio_idx],
                 meme_audio_extracted,
                 outro_audios[outro_audio_idx]
             ]
-            full_durations = [intro_duration, meme_dur, outro_duration]
+            full_durations = [selected_intro_dur, meme_dur, outro_duration]
             full_audio = temp_dir / f"full_audio_{meme_idx}_{acc_idx}.m4a"
             concatenate_audio(full_audio_parts, full_audio, full_durations)
 
-            # Step 5: Create silent version of concatenated video and merge with full audio
+            # Step 5: Merge video + audio
             silent_concat = temp_dir / f"silent_concat_{meme_idx}_{acc_idx}.mp4"
             subprocess.run([
                 "ffmpeg", "-y", "-i", str(concat_video),
@@ -534,15 +440,11 @@ def main():
             merged = temp_dir / f"merged_{meme_idx}_{acc_idx}.mp4"
             merge_video_audio(silent_concat, full_audio, merged)
 
-            # Step 6: Apply visual preset
-            styled = temp_dir / f"styled_{meme_idx}_{acc_idx}.mp4"
-            apply_visual_preset(merged, styled, preset)
-
-            # Step 7: Add caption
+            # Step 6: Add caption
             captioned = temp_dir / f"captioned_{meme_idx}_{acc_idx}.mp4"
-            add_caption(styled, captioned, caption)
+            add_caption(merged, captioned, caption)
 
-            # Step 8: Append endcard (if exists)
+            # Step 7: Append endcard
             if normalized_endcard:
                 append_endcard(captioned, normalized_endcard, output_path, temp_dir)
             else:
@@ -568,10 +470,12 @@ def main():
         count = len(list(acc_dir.glob("*.mp4")))
         print(f"  batch_output/acc{i}/ - {count} videos")
     print()
-    print("Each video has unique:")
-    print("  - Audio combination (intro + middle + outro)")
-    print("  - Visual treatment (brightness, saturation, speed, crop)")
-    print("  - Caption variation")
+    print("Each video has:")
+    print("  - Random intro video")
+    print("  - Random audio combination (intro + reaction + outro)")
+    print("  - Meme audio at 75% + reaction layered")
+    print("  - Random caption")
+    print("  - Endcard at the end")
     print()
 
 
