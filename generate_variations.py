@@ -2,10 +2,13 @@
 """
 POV UGC Variation Generator
 ---------------------------
-Generates 5 unique video variations per meme for multi-account posting.
-Each variation uses random intro video + random audio combinations.
+Generates unique POV videos with sequential numbering.
+Each video uses random intro video + random audio combinations.
 
 Usage: python generate_variations.py
+
+Output: pov_videos/POV video 1.mp4, POV video 2.mp4, etc.
+Counter persists in counter.txt between runs.
 """
 
 import os
@@ -23,8 +26,23 @@ CAPTIONS = [
     "POV you stay up too late\non a school night...",
 ]
 
-# Number of accounts/variations per meme
-NUM_ACCOUNTS = 5
+# Number of variations per meme
+NUM_VARIATIONS = 5
+
+
+def get_next_video_number(counter_file):
+    """Get the next video number from counter file."""
+    if counter_file.exists():
+        try:
+            return int(counter_file.read_text().strip())
+        except:
+            return 1
+    return 1
+
+
+def save_video_number(counter_file, number):
+    """Save the current video number to counter file."""
+    counter_file.write_text(str(number))
 
 
 def check_ffmpeg():
@@ -281,13 +299,17 @@ def main():
     memes_dir = input_dir / "memes"
     outro_dir = input_dir / "outro"
     endcard_dir = input_dir / "endcard"
-    output_base = base_dir / "batch_output"
+    output_dir = base_dir / "pov_videos"
     temp_dir = base_dir / "temp_variations"
+    counter_file = base_dir / "counter.txt"
 
     # Create directories
     temp_dir.mkdir(exist_ok=True)
-    for i in range(1, NUM_ACCOUNTS + 1):
-        (output_base / f"acc{i}").mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(exist_ok=True)
+
+    # Get starting video number
+    video_number = get_next_video_number(counter_file)
+    print(f"[OK] Starting from video number: {video_number}")
 
     # Find audio files
     intro_audios = find_audio_files(audio_dir, "intro")
@@ -373,18 +395,20 @@ def main():
         meme_durations.append(get_video_duration(norm_path))
 
     print()
-    print(f"Generating {NUM_ACCOUNTS} variations per meme...")
+    print(f"Generating {NUM_VARIATIONS} variations per meme...")
     print()
+
+    # Track how many videos we generate
+    videos_generated = 0
 
     # Process each meme
     for meme_idx, (meme_path, meme_dur) in enumerate(zip(normalized_memes, meme_durations)):
         meme_name = meme_videos[meme_idx].stem
         print(f"[{meme_idx + 1}/{len(meme_videos)}] Processing: {meme_name}")
 
-        # Generate 5 variations
-        for acc_idx in range(NUM_ACCOUNTS):
-            acc_num = acc_idx + 1
-            output_path = output_base / f"acc{acc_num}" / f"{meme_name}_v{acc_num}.mp4"
+        # Generate variations
+        for var_idx in range(NUM_VARIATIONS):
+            output_path = output_dir / f"POV video {video_number}.mp4"
 
             # Random selections
             intro_idx = random.randint(0, len(normalized_intros) - 1)
@@ -396,7 +420,7 @@ def main():
             selected_intro = normalized_intros[intro_idx]
             selected_intro_dur = intro_durations[intro_idx]
 
-            print(f"  acc{acc_num}: intro={intro_idx+1}, audio=({intro_audio_idx+1},{middle_audio_idx+1},{outro_audio_idx+1})")
+            print(f"  POV video {video_number}: intro={intro_idx+1}, audio=({intro_audio_idx+1},{middle_audio_idx+1},{outro_audio_idx+1})")
 
             # Step 1: Mix meme audio with reaction audio (meme at 75% volume)
             meme_with_reaction = temp_dir / f"meme_mixed_{meme_idx}_{acc_idx}.mp4"
@@ -450,7 +474,13 @@ def main():
             else:
                 subprocess.run(["cp", str(captioned), str(output_path)], check=True)
 
+            video_number += 1
+            videos_generated += 1
+
         print()
+
+    # Save the counter for next run
+    save_video_number(counter_file, video_number)
 
     # Cleanup
     print("Cleaning up temporary files...")
@@ -464,11 +494,8 @@ def main():
     print("   DONE!")
     print("=" * 55)
     print()
-    print(f"Generated {len(meme_videos) * NUM_ACCOUNTS} total videos:")
-    for i in range(1, NUM_ACCOUNTS + 1):
-        acc_dir = output_base / f"acc{i}"
-        count = len(list(acc_dir.glob("*.mp4")))
-        print(f"  batch_output/acc{i}/ - {count} videos")
+    print(f"Generated {videos_generated} videos in pov_videos/")
+    print(f"Next run will start at: POV video {video_number}")
     print()
     print("Each video has:")
     print("  - Random intro video")
