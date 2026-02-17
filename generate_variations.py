@@ -84,7 +84,7 @@ def find_audio_files(directory, prefix):
     return files
 
 
-def normalize_video(input_path, output_path, width=1080, height=1920, fps=30):
+def normalize_video(input_path, output_path, width=1080, height=1920, fps=30, keep_audio=False):
     """Normalize a video to target resolution and frame rate."""
     cmd = [
         "ffmpeg", "-y",
@@ -93,9 +93,12 @@ def normalize_video(input_path, output_path, width=1080, height=1920, fps=30):
         "-c:v", "libx264",
         "-preset", "fast",
         "-crf", "23",
-        "-an",  # Remove audio, we'll add our own
-        str(output_path)
     ]
+    if keep_audio:
+        cmd.extend(["-c:a", "aac", "-b:a", "192k"])
+    else:
+        cmd.append("-an")  # Remove audio
+    cmd.append(str(output_path))
     subprocess.run(cmd, capture_output=True, check=True)
 
 
@@ -289,6 +292,51 @@ def merge_video_audio(video_path, audio_path, output_path):
     subprocess.run(cmd, capture_output=True, check=True)
 
 
+def mix_meme_with_reaction(meme_video_path, reaction_audio_path, output_path, meme_volume=0.75):
+    """Mix meme's original audio (at reduced volume) with reaction audio overlay."""
+    meme_duration = get_video_duration(meme_video_path)
+
+    # Mix meme audio at 75% with reaction audio on top, trimmed to meme length
+    cmd = [
+        "ffmpeg", "-y",
+        "-i", str(meme_video_path),
+        "-i", str(reaction_audio_path),
+        "-filter_complex",
+        f"[0:a]volume={meme_volume}[meme];[1:a]atrim=0:{meme_duration},asetpts=PTS-STARTPTS[react];[meme][react]amix=inputs=2:duration=shortest[out]",
+        "-map", "0:v",
+        "-map", "[out]",
+        "-c:v", "copy",
+        "-c:a", "aac",
+        "-b:a", "192k",
+        str(output_path)
+    ]
+    subprocess.run(cmd, capture_output=True, check=True)
+
+
+def append_endcard(main_video_path, endcard_path, output_path, temp_dir):
+    """Append endcard to the main video, preserving endcard's audio (or silence)."""
+    list_file = temp_dir / "final_concat.txt"
+    with open(list_file, "w") as f:
+        f.write(f"file '{str(main_video_path).replace(chr(39), chr(39)+chr(92)+chr(39)+chr(39))}'\n")
+        f.write(f"file '{str(endcard_path).replace(chr(39), chr(39)+chr(92)+chr(39)+chr(39))}'\n")
+
+    cmd = [
+        "ffmpeg", "-y",
+        "-f", "concat",
+        "-safe", "0",
+        "-i", str(list_file),
+        "-c:v", "libx264",
+        "-preset", "fast",
+        "-crf", "18",
+        "-pix_fmt", "yuv420p",
+        "-c:a", "aac",
+        "-b:a", "192k",
+        "-movflags", "+faststart",
+        str(output_path)
+    ]
+    subprocess.run(cmd, capture_output=True, check=True)
+
+
 def main():
     print("=" * 55)
     print("   POV UGC Variation Generator")
@@ -382,21 +430,21 @@ def main():
     concatenate_videos(outro_normalized, normalized_outro, temp_dir)
     outro_duration = get_video_duration(normalized_outro)
 
-    # Normalize endcard (silent)
+    # Normalize endcard (keep any audio it has)
     normalized_endcard = None
     if endcard_video:
         print("  Processing endcard...")
         normalized_endcard = temp_dir / "endcard_normalized.mp4"
-        normalize_video(endcard_video, normalized_endcard)
+        normalize_video(endcard_video, normalized_endcard, keep_audio=True)
 
-    # Normalize memes (silent)
+    # Normalize memes (keep audio for mixing)
     print("  Processing memes...")
     normalized_memes = []
     meme_durations = []
     for i, meme in enumerate(meme_videos):
         print(f"    - {meme.name}")
         norm_path = temp_dir / f"meme_{i}_norm.mp4"
-        normalize_video(meme, norm_path)
+        normalize_video(meme, norm_path, keep_audio=True)
         normalized_memes.append(norm_path)
         meme_durations.append(get_video_duration(norm_path))
 
@@ -432,36 +480,73 @@ def main():
 
             print(f"  acc{acc_num}: audio({intro_audio_idx+1},{middle_audio_idx+1},{outro_audio_idx+1}) preset={preset['name']}")
 
-            # Step 1: Concatenate video (intro + meme + outro + endcard)
-            video_parts = [normalized_intro, meme_path, normalized_outro]
-            if normalized_endcard:
-                video_parts.append(normalized_endcard)
+            # Step 1: Mix meme audio with reaction audio (meme at 75% volume)
+            meme_with_reaction = temp_dir / f"meme_mixed_{meme_idx}_{acc_idx}.mp4"
+            mix_meme_with_reaction(
+                meme_path,
+                middle_audios[middle_audio_idx],
+                meme_with_reaction,
+                meme_volume=0.75
+            )
 
+            # Step 2: Concatenate video (intro + meme_with_audio + outro) - no endcard yet
+            video_parts = [normalized_intro, meme_with_reaction, normalized_outro]
             concat_video = temp_dir / f"concat_{meme_idx}_{acc_idx}.mp4"
             concatenate_videos(video_parts, concat_video, temp_dir)
 
-            # Step 2: Concatenate audio (intro + middle + outro)
-            # Trim audio to match video durations
+            # Step 3: Concatenate audio for intro and outro only
+            # (meme already has mixed audio)
             audio_parts = [
                 intro_audios[intro_audio_idx],
-                middle_audios[middle_audio_idx],
                 outro_audios[outro_audio_idx]
             ]
-            durations = [intro_duration, meme_dur, outro_duration]
+            durations = [intro_duration, outro_duration]
 
             concat_audio = temp_dir / f"audio_{meme_idx}_{acc_idx}.m4a"
             concatenate_audio(audio_parts, concat_audio, durations)
 
-            # Step 3: Merge video + audio
-            merged = temp_dir / f"merged_{meme_idx}_{acc_idx}.mp4"
-            merge_video_audio(concat_video, concat_audio, merged)
+            # Step 4: Build final audio by combining intro_audio + meme_mixed_audio + outro_audio
+            # Extract meme's mixed audio first
+            meme_audio_extracted = temp_dir / f"meme_audio_{meme_idx}_{acc_idx}.m4a"
+            subprocess.run([
+                "ffmpeg", "-y", "-i", str(meme_with_reaction),
+                "-vn", "-c:a", "aac", "-b:a", "192k",
+                str(meme_audio_extracted)
+            ], capture_output=True, check=True)
 
-            # Step 4: Apply visual preset
+            # Now concatenate: intro_audio + meme_audio + outro_audio
+            full_audio_parts = [
+                intro_audios[intro_audio_idx],
+                meme_audio_extracted,
+                outro_audios[outro_audio_idx]
+            ]
+            full_durations = [intro_duration, meme_dur, outro_duration]
+            full_audio = temp_dir / f"full_audio_{meme_idx}_{acc_idx}.m4a"
+            concatenate_audio(full_audio_parts, full_audio, full_durations)
+
+            # Step 5: Create silent version of concatenated video and merge with full audio
+            silent_concat = temp_dir / f"silent_concat_{meme_idx}_{acc_idx}.mp4"
+            subprocess.run([
+                "ffmpeg", "-y", "-i", str(concat_video),
+                "-an", "-c:v", "copy", str(silent_concat)
+            ], capture_output=True, check=True)
+
+            merged = temp_dir / f"merged_{meme_idx}_{acc_idx}.mp4"
+            merge_video_audio(silent_concat, full_audio, merged)
+
+            # Step 6: Apply visual preset
             styled = temp_dir / f"styled_{meme_idx}_{acc_idx}.mp4"
             apply_visual_preset(merged, styled, preset)
 
-            # Step 5: Add caption
-            add_caption(styled, output_path, caption)
+            # Step 7: Add caption
+            captioned = temp_dir / f"captioned_{meme_idx}_{acc_idx}.mp4"
+            add_caption(styled, captioned, caption)
+
+            # Step 8: Append endcard (if exists)
+            if normalized_endcard:
+                append_endcard(captioned, normalized_endcard, output_path, temp_dir)
+            else:
+                subprocess.run(["cp", str(captioned), str(output_path)], check=True)
 
         print()
 
