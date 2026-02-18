@@ -27,7 +27,7 @@ CAPTIONS = [
 ]
 
 # Number of variations per meme
-NUM_VARIATIONS = 5
+NUM_VARIATIONS = 1
 
 
 def get_next_video_number(counter_file):
@@ -423,7 +423,7 @@ def main():
             print(f"  POV video {video_number}: intro={intro_idx+1}, audio=({intro_audio_idx+1},{middle_audio_idx+1},{outro_audio_idx+1})")
 
             # Step 1: Mix meme audio with reaction audio (meme at 75% volume)
-            meme_with_reaction = temp_dir / f"meme_mixed_{meme_idx}_{acc_idx}.mp4"
+            meme_with_reaction = temp_dir / f"meme_mixed_{meme_idx}_{var_idx}.mp4"
             mix_meme_with_reaction(
                 meme_path,
                 middle_audios[middle_audio_idx],
@@ -433,11 +433,11 @@ def main():
 
             # Step 2: Concatenate video (intro + meme + outro)
             video_parts = [selected_intro, meme_with_reaction, normalized_outro]
-            concat_video = temp_dir / f"concat_{meme_idx}_{acc_idx}.mp4"
+            concat_video = temp_dir / f"concat_{meme_idx}_{var_idx}.mp4"
             concatenate_videos(video_parts, concat_video, temp_dir)
 
             # Step 3: Extract meme's mixed audio
-            meme_audio_extracted = temp_dir / f"meme_audio_{meme_idx}_{acc_idx}.m4a"
+            meme_audio_extracted = temp_dir / f"meme_audio_{meme_idx}_{var_idx}.m4a"
             subprocess.run([
                 "ffmpeg", "-y", "-i", str(meme_with_reaction),
                 "-vn", "-c:a", "aac", "-b:a", "192k",
@@ -451,21 +451,21 @@ def main():
                 outro_audios[outro_audio_idx]
             ]
             full_durations = [selected_intro_dur, meme_dur, outro_duration]
-            full_audio = temp_dir / f"full_audio_{meme_idx}_{acc_idx}.m4a"
+            full_audio = temp_dir / f"full_audio_{meme_idx}_{var_idx}.m4a"
             concatenate_audio(full_audio_parts, full_audio, full_durations)
 
             # Step 5: Merge video + audio
-            silent_concat = temp_dir / f"silent_concat_{meme_idx}_{acc_idx}.mp4"
+            silent_concat = temp_dir / f"silent_concat_{meme_idx}_{var_idx}.mp4"
             subprocess.run([
                 "ffmpeg", "-y", "-i", str(concat_video),
                 "-an", "-c:v", "copy", str(silent_concat)
             ], capture_output=True, check=True)
 
-            merged = temp_dir / f"merged_{meme_idx}_{acc_idx}.mp4"
+            merged = temp_dir / f"merged_{meme_idx}_{var_idx}.mp4"
             merge_video_audio(silent_concat, full_audio, merged)
 
             # Step 6: Add caption
-            captioned = temp_dir / f"captioned_{meme_idx}_{acc_idx}.mp4"
+            captioned = temp_dir / f"captioned_{meme_idx}_{var_idx}.mp4"
             add_caption(merged, captioned, caption)
 
             # Step 7: Append endcard
