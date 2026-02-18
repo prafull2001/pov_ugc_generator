@@ -235,7 +235,7 @@ def merge_video_audio(video_path, audio_path, output_path):
     subprocess.run(cmd, capture_output=True, check=True)
 
 
-def mix_meme_with_reaction(meme_video_path, reaction_audio_path, output_path, meme_volume=0.75):
+def mix_meme_with_reaction(meme_video_path, reaction_audio_path, output_path, meme_volume=0.85):
     """Mix meme's original audio (at reduced volume) with reaction audio overlay."""
     meme_duration = get_video_duration(meme_video_path)
 
@@ -428,7 +428,7 @@ def main():
                 meme_path,
                 middle_audios[middle_audio_idx],
                 meme_with_reaction,
-                meme_volume=0.75
+                meme_volume=0.85
             )
 
             # Step 2: Concatenate video (intro + meme + outro)
@@ -500,7 +500,7 @@ def main():
     print("Each video has:")
     print("  - Random intro video")
     print("  - Random audio combination (intro + reaction + outro)")
-    print("  - Meme audio at 75% + reaction layered")
+    print("  - Meme audio at 85% + reaction layered")
     print("  - Random caption")
     print("  - Endcard at the end")
     print()
